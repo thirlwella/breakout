@@ -5,376 +5,331 @@
 
 import pygame
 import pygame.freetype
+import os
+import sys
 
-pygame.init()
-screen = pygame.display.set_mode((640, 480))
+# Constants
+SCREEN_WIDTH = 640
+SCREEN_HEIGHT = 480
+FPS = 30
+
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+
+def load_image(name):
+    """ Load image and return image object"""
+    fullname = os.path.join(os.path.dirname(__file__), "assets", name)
+    try:
+        image = pygame.image.load(fullname)
+        if image.get_alpha() is None:
+            image = image.convert()
+        else:
+            image = image.convert_alpha()
+    except pygame.error as message:
+        print(f"Cannot load image: {name}")
+        raise SystemExit(message)
+    return image
 
 class Bat(pygame.sprite.Sprite):
-    """ Bat
+    """ The player's bat
     """
 
     def __init__(self, xypos):
-        """ Creates Bat in xypos 100,450
-        """
-        pygame.sprite.Sprite.__init__(self)
-        self.image = pygame.image.load("bat.gif")
-        self.image = self.image.convert()
+        super().__init__()
+        self.image = load_image("bat.gif")
         self.rect = self.image.get_rect()
-        self.dx = 0
-        self.relative_dx = 0
-        (self.x, self.y) = xypos
-        self.prev_x = self.x
-        self.rect.centerx = self.x
-        self.rect.centery = self.y
+        self.x, self.y = xypos
+        self.rect.center = (self.x, self.y)
+        self.speed = 10
 
-
-    def checkEvents(self):
+    def check_events(self, screen_width):
         keys = pygame.key.get_pressed()
+        move_speed = self.speed
+        if keys[pygame.K_SPACE]:
+            move_speed *= 2
+
         if keys[pygame.K_LEFT]:
             if self.rect.left > 0:
-                self.x += -10
+                self.x -= move_speed
         if keys[pygame.K_RIGHT]:
-            if self.rect.right < screen.get_width():
-                self.x += 10
-        # Space bar doubles the speed
-        if keys[pygame.K_SPACE]:
-            if keys[pygame.K_LEFT]:
-                if self.rect.left > 0 + 10:
-                    self.x += -20
-            if keys[pygame.K_RIGHT]:
-                if self.rect.right < screen.get_width() - 10:
-                    self.x += 20
+            if self.rect.right < screen_width:
+                self.x += move_speed
 
-    def update(self, control):
+    def update(self, control, screen_width):
         if control:
-            self.checkEvents()
-        self.rect.centerx = self.x
-        self.rect.centery = self.y
+            self.check_events(screen_width)
+        self.rect.centerx = int(self.x)
+        self.rect.centery = int(self.y)
 
 
 class Ball(pygame.sprite.Sprite):
-    """ Ball
+    """ The bouncing ball
     """
 
     def __init__(self, xypos):
-        """ Creates Ball in xypos 100,450
-        """
-        pygame.sprite.Sprite.__init__(self)
-        self.image = pygame.image.load("ball.gif")
-        self.image = self.image.convert()
+        super().__init__()
+        self.image = load_image("ball.gif")
         self.rect = self.image.get_rect()
         self.dx = 5
         self.dy = -5
-        self.relative_dx = 0
-        self.relative_dy = 0
-        (self.x, self.y) = xypos
-        self.prev_x = self.x
-        self.rect.centerx = self.x
-        self.rect.centery = self.y
-        self.count = 0
+        self.x, self.y = xypos
+        self.rect.center = (int(self.x), int(self.y))
+        self.hit_count = 0
 
-    def checkEvents(self):
-
-        scrWidth = screen.get_width()
-        scrHeight = screen.get_height()
-        offRight = offLeft = offTop = offBottom = offScreen = False
-
-        if self.rect.right > scrWidth:
-            offRight = True
-        if self.rect.left < 0:
-            offLeft = True
-        if self.y > scrHeight:
-            offBottom = True
-        if self.y < 0:
-            offTop = True
-
-        if offLeft or offRight:
+    def check_bounds(self, screen_width, screen_height):
+        if self.rect.right > screen_width:
+            self.rect.right = screen_width
             self.dx *= -1
-            self.relative_dx *= -1
-        if offTop or offBottom:
+        elif self.rect.left < 0:
+            self.rect.left = 0
+            self.dx *= -1
+        
+        if self.rect.top < 0:
+            self.rect.top = 0
             self.dy *= -1
-            self.relative_dy *= -1
+            
+        if self.rect.bottom > screen_height:
+            return True # Ball lost
+        return False
 
-        # This speed ups the ball
-        if self.count == 2:
-            self.dy *= 1.20
-            self.dx *= 1.20
-            self.count += 1
-        elif self.count == 10:
-            self.dy *= 1.20
-            self.dx *= 1.20
-            self.count += 1
-        elif self.count == 20:
-            self.dy *= 1.20
-            self.dx *= 1.20
-            self.count += 1
+    def speed_up(self):
+        """ Gradually increase ball speed based on hit count """
+        if self.hit_count in [2, 10, 20]:
+            self.dx *= 1.2
+            self.dy *= 1.2
+            self.hit_count += 1
 
-    def update(self):
-        self.checkEvents()
-        self.x += self.relative_dx
-        self.y += self.relative_dy
-        self.rect.centerx = self.x
-        self.rect.centery = self.y
+    def update(self, screen_width, screen_height):
+        self.x += self.dx
+        self.y += self.dy
+        self.rect.centerx = int(self.x)
+        self.rect.centery = int(self.y)
+        return self.check_bounds(screen_width, screen_height)
 
 class Block(pygame.sprite.Sprite):
-    """ Block
+    """ A brick to be broken
     """
 
     def __init__(self, xypos):
-        """ Creates block in xypos
-        """
-        pygame.sprite.Sprite.__init__(self)
-        self.image = pygame.image.load("brick.gif")
-        self.image = self.image.convert()
+        super().__init__()
+        self.image = load_image("brick.gif")
         self.rect = self.image.get_rect()
-        (self.x, self.y) = xypos
-        self.rect.centerx = self.x
-        self.rect.centery = self.y
+        self.rect.center = xypos
 
 
 
-class Game():
-    def __init__(self):
-        # Set up the drawing window
-        self.ball_speed = 1
-        self.control = ""
+class Game:
+    def __init__(self, screen):
+        self.screen = screen
+        self.clock = pygame.time.Clock()
+        self.control = "menu"
         pygame.display.set_caption("Breakout!")
 
-        self.background = pygame.Surface(screen.get_size())
-        self.background.fill((255, 255, 255))
-        screen.blit(self.background, (0, 0))
-        self.scrHeight = screen.get_height()
-        self.my_ft_font = pygame.freetype.Font("ModernDOS4378x8.ttf", 16)
-        self.my_ft_font2 = pygame.freetype.Font("ModernDOS4378x8.ttf", 32)
-        self.my_ft_font3 = pygame.freetype.Font("ModernDOS4378x8.ttf", 24)
+        self.update_background()
+        
+        # Load fonts
+        font_path = os.path.join(os.path.dirname(__file__), "assets", "ModernDOS4378x8.ttf")
+        try:
+            self.font_small = pygame.freetype.Font(font_path, 16)
+            self.font_large = pygame.freetype.Font(font_path, 32)
+            self.font_medium = pygame.freetype.Font(font_path, 24)
+        except pygame.error:
+            # Fallback if font file is missing
+            self.font_small = pygame.freetype.SysFont("Arial", 16)
+            self.font_large = pygame.freetype.SysFont("Arial", 32)
+            self.font_medium = pygame.freetype.SysFont("Arial", 24)
+            
         self.lives = 2
         self.score = 0
 
+    def update_background(self):
+        self.background = pygame.Surface(self.screen.get_size())
+        self.background.fill(WHITE)
+        self.screen.blit(self.background, (0, 0))
 
-    def level(self, level):
-        self.background.fill((255, 255, 255))
-        screen.blit(self.background, (0, 0))
-        bat = Bat([250, 450])
-        ball = Ball([250, 300])
-        #scoreboard = Scoreboard()
-        bricks = []
+    def handle_resize(self, size):
+        self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
+        self.update_background()
 
-        for x in range(19, 669, 50):
-            for y in range(100, 225, 25):
-                coords = [x, y]
-                bricks.append(Block(coords))
+    def reset_level(self):
+        self.background.fill(WHITE)
+        sw, sh = self.screen.get_size()
+        self.bat = Bat([sw // 2, sh - 30])
+        self.ball = Ball([sw // 2, sh // 2 + 60])
+        
+        self.bricks = pygame.sprite.Group()
+        brick_width = 40
+        brick_height = 20
+        padding = 10
+        cols = sw // (brick_width + padding)
+        rows = 5
+        
+        start_x = (sw - (cols * (brick_width + padding) - padding)) // 2
+        
+        for r in range(rows):
+            for c in range(cols):
+                x = start_x + c * (brick_width + padding) + brick_width // 2
+                y = 100 + r * (brick_height + padding) + brick_height // 2
+                self.bricks.add(Block((x, y)))
 
-        blockGroup = pygame.sprite.OrderedUpdates(bricks)
-        blockSprites = pygame.sprite.Group(blockGroup)
+        self.all_sprites = pygame.sprite.LayeredUpdates()
+        self.all_sprites.add(self.bat)
+        self.all_sprites.add(self.ball)
+        self.all_sprites.add(self.bricks)
 
-        batSprite = pygame.sprite.Group(bat)
-        ballSprite = pygame.sprite.Group(ball)
-
-        clock = pygame.time.Clock()
-        keepGoing = True
-        while keepGoing:
-            clock.tick(30)
+    def play_level(self):
+        self.reset_level()
+        keep_going = True
+        
+        while keep_going:
+            self.clock.tick(FPS)
             pygame.mouse.set_visible(False)
+            
+            sw, sh = self.screen.get_size()
+            
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    keepGoing = False
+                    keep_going = False
+                    self.control = "finish"
+                if event.type == pygame.VIDEORESIZE:
+                    self.handle_resize(event.size)
+                    sw, sh = self.screen.get_size()
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    keep_going = False
                     self.control = "menu"
 
-            #Calculate relative speeds of objects (convert to a factor of 1)
-            #find the fastest movement either x or y axis
-            speeds = []
-            for _ in ballSprite:
-                speeds.append(abs(_.dx))
-                speeds.append(abs(_.dy))
-            for _ in ballSprite:
-                speeds.append(abs(_.dx))
-            # need to think about implications of turning into an integer to loop..
-            fastest_object = int(max(speeds))
-            #update all objects with their relative speed
-            # They will move this whilst the fasted object will move 1
-            for _ in ballSprite:
-                _.relative_dx = _.dx / fastest_object
-                _.relative_dy = _.dy / fastest_object
-            for _ in ballSprite:
-                _.relative_dx = _.dx / fastest_object
-
-            #Add a loop here for ball speed
-            for updates in range (1,fastest_object):
-                if updates == 1:
-                    batSprite.update(True)
+            # Update
+            self.bat.update(True, sw)
+            ball_lost = self.ball.update(sw, sh)
+            
+            if ball_lost:
+                self.lives -= 1
+                if self.lives < 0:
+                    self.game_over()
+                    keep_going = False
                 else:
-                    batSprite.update(False)
-                ballSprite.update()
-                blockSprites.update()
+                    self.ball.x, self.ball.y = sw // 2, sh // 2 + 60
+                    self.ball.dx = 5
+                    self.ball.dy = -5
+                    self.ball.rect.center = (int(self.ball.x), int(self.ball.y))
 
-                # collision detection bat against ball
-                hitbat = pygame.sprite.spritecollideany(ball,batSprite)
-                if hitbat:
-                    if ball.rect.top + 1 == hitbat.rect.bottom or ball.rect.bottom - 1 == hitbat.rect.top:
-                        ball.dy *= -1
-                        ball.relative_dy *= -1
-                        #calculate any adjustment needed to horizontal movement of the ball speed
-                        # will split into 3 regions, right , mid and left
-                        bat_thirds = (hitbat.rect.right - hitbat.rect.left) /3
-                        if ball.rect.left >= (hitbat.rect.left + (bat_thirds *2)):
-                            #Right hand side
-                            ball.dx += 1
-                            ball.relative_dx += 1
-                        elif ball.rect.left >= (hitbat.rect.left + (bat_thirds)):
-                            # Middle
-                            pass
-                        else:
-                            # Left
-                            ball.dx -= 1
-                            ball.relative_dx -= 1
+            # Collisions
+            self.handle_collisions()
 
-                    else:
-                        if ball.rect.right - 1 == hitbat.rect.left or ball.rect.left + 1 == hitbat.rect.right:
-                            ball.dx *= -1
-                            ball.relative_dx *= -1
-                    ball.count += 1
+            if len(self.bricks) == 0:
+                self.level_complete()
+                keep_going = False
 
-                hitbrick = pygame.sprite.spritecollideany(ball, blockSprites)
-
-                if hitbrick:
-                    if ball.rect.top + 1 == hitbrick.rect.bottom or ball.rect.bottom - 1 == hitbrick.rect.top:
-                        ball.dy *= -1
-                        ball.relative_dy *= -1
-                    else:
-                        if ball.rect.right - 1 == hitbrick.rect.left or ball.rect.left + 1 == hitbrick.rect.right:
-                            ball.dx *= -1
-                            ball.relative_dx *= -1
-                    hitbrick.kill()
-                    self.score +=1
-
-                if ball.y > self.scrHeight:
-                    if self.lives == 0:
-                        self.game_finish()
-                        keepGoing = False
-                        # Message stating end of game
-                    self.lives += -1
-                    ball.x = 250
-                    ball.y = 300
-                    if ball.dy >= 0:
-                        ball.dy *= -1
-                    ball.dx = 5
-
-            # update to movements completed, now time to refresh the screen
-            batSprite.clear(screen, self.background)
-            ballSprite.clear(screen, self.background)
-            blockSprites.clear(screen, self.background)
-
-            batSprite.draw(screen)
-            ballSprite.draw(screen)
-            blockSprites.draw(screen)
-
-            text = "Lives: %d" % (self.lives)
-            self.my_ft_font.render_to(screen, (0, 0), text, (0, 0, 0),(255,255,255))
-            text = "Score: %d"  % (self.score)
-            self.my_ft_font.render_to(screen, (450, 0), text, (0, 0, 0), (255, 255, 255))
-
-            pygame.display.flip()
-
-            if len(blockSprites) == 0:
-                keepGoing = False
-                self.my_ft_font2.render_to(screen, (50, 300), "LEVEL COMPLETE!", (0, 0, 0), (255, 255, 255))
-                pygame.display.flip()
-                waiting = Wait_for_key_press()
-                waiting.update(self.background)
-                return "level1"
-
-
+            # Draw
+            self.draw()
 
         pygame.mouse.set_visible(True)
-        return
 
-    def update(self):
-        self.text = "Lives: %d" % (self.lives)
+    def handle_collisions(self):
+        # Ball and Bat
+        if pygame.sprite.collide_rect(self.ball, self.bat):
+            if self.ball.dy > 0: # Only bounce if moving down
+                self.ball.dy *= -1
+                self.ball.hit_count += 1
+                self.ball.speed_up()
+                
+                # Change angle based on where it hit the bat
+                offset = (self.ball.rect.centerx - self.bat.rect.centerx) / (self.bat.rect.width / 2)
+                self.ball.dx += offset * 2
 
-    def game_finish(self):
-        print("Game over")
+        # Ball and Bricks
+        hit_bricks = pygame.sprite.spritecollide(self.ball, self.bricks, True)
+        if hit_bricks:
+            # Simple bounce logic
+            self.ball.dy *= -1
+            self.score += len(hit_bricks)
 
-        self.my_ft_font2.render_to(screen, (160, 300), "GAME OVER!", (0, 0, 0), (255, 255, 255))
+    def draw(self):
+        self.screen.blit(self.background, (0, 0))
+        self.all_sprites.draw(self.screen)
+        
+        # UI
+        sw, sh = self.screen.get_size()
+        self.font_small.render_to(self.screen, (10, 10), f"Lives: {self.lives}", BLACK)
+        self.font_small.render_to(self.screen, (sw - 140, 10), f"Score: {self.score}", BLACK)
+        
         pygame.display.flip()
+
+    def game_over(self):
+        sw, sh = self.screen.get_size()
+        self.font_large.render_to(self.screen, (sw // 2 - 140, sh // 2), "GAME OVER!", BLACK)
+        pygame.display.flip()
+        self.wait_for_input()
         self.control = "menu"
-        waiting = Wait_for_key_press()
-        test = waiting.update(self.background)
 
-    def instructions(self):
-
-        insLabels = []
-        instructions = (
-            "",
-            "",
-            "    This is BREAKOUT, bounce the ball      ",
-            "           against the bricks              ",
-            "",
-            "       written by Adam Thirlwell           ",
-            "",
-            "",
-            "    Keys : Arrows = left and right,        ",
-            "           space = go faster               "
-            "",
-            "        Press Any Key to Continue          ",
-        )
-
-        background = pygame.Surface(screen.get_size())
-        background.fill((0, 0, 0))
-        screen.blit(background, (0, 0))
-        pygame.draw.rect(screen, (255,255,255), (30, 30, screen.get_width()-60, self.background.get_height()-60))
-
-
-        row = 0
-        for line in instructions:
-            self.my_ft_font.render_to(screen, (0, 0 + (row * 24)), line, (0, 0, 0), (255, 255, 255))
-            row += 1
+    def level_complete(self):
+        sw, sh = self.screen.get_size()
+        self.font_large.render_to(self.screen, (sw // 2 - 150, sh // 2), "LEVEL COMPLETE!", BLACK)
         pygame.display.flip()
-        waiting = Wait_for_key_press()
-        test = waiting.update(self.background)
-        if test == 'finish':
+        self.wait_for_input()
+        self.control = "menu"
+
+    def show_instructions(self):
+        instructions = [
+            "BREAKOUT",
+            "",
+            "Bounce the ball against ",
+            "the bricks",
+            "",
+            "Keys:",
+            "Arrows - Move Left/Right",
+            "Space  - Move Faster",
+            "Esc    - Return to Menu",
+            "",
+            "Press Any Key to Start"
+        ]
+
+        sw, sh = self.screen.get_size()
+        self.screen.fill(BLACK)
+        pygame.draw.rect(self.screen, WHITE, (50, 50, sw - 100, sh - 100))
+        
+        for i, line in enumerate(instructions):
+            self.font_small.render_to(self.screen, (100, 100 + i * 30), line, BLACK)
+            
+        pygame.display.flip()
+        if self.wait_for_input() == "quit":
             self.control = "finish"
         else:
-            self.control = 'level1'
+            self.control = "level1"
 
-        pygame.mouse.set_visible(True)
-
-class Wait_for_key_press:
-    def __init__(self):
-        self.wait = True
-
-    def update(self,surface):
-        pygame.time.wait(1000)
+    def wait_for_input(self):
+        pygame.time.wait(500)
         pygame.event.clear()
-        while self.wait:
-            event = pygame.event.wait()
-            if event.type == pygame.QUIT:
-                self.wait = False
-                return "finish"
-            elif event.type == pygame.KEYDOWN:
-                self.wait = False
-
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return "quit"
+                if event.type == pygame.VIDEORESIZE:
+                    self.handle_resize(event.size)
+                    # For instructions and game over, we might want to redraw
+                    if self.control == "menu":
+                        self.show_instructions()
+                        return "resize" # Special return to trigger redraw
+                if event.type == pygame.KEYDOWN:
+                    return "key"
+            self.clock.tick(FPS)
 
 def main():
     pygame.init()
-    breakout = Game()
-    breakout.control = "menu"
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+    game = Game(screen)
 
-    donePlaying = False
-
-    while not donePlaying:
-        if not donePlaying:
-            # open main menu
-            if breakout.control == "menu":
-                breakout.instructions()
-            # open level to play
-            if breakout.control[:5] == "level":
-                level_num = int(breakout.control[5:])
-                breakout.level(level_num)
-            if breakout.control == "finish":
-                donePlaying = True
-    # Done! Time to quit.
+    while game.control != "finish":
+        if game.control == "menu":
+            res = game.show_instructions()
+            if res == "resize":
+                continue # Redraw menu
+        elif game.control.startswith("level"):
+            game.play_level()
+            
     pygame.quit()
-
+    sys.exit()
 
 if __name__ == "__main__":
     main()
